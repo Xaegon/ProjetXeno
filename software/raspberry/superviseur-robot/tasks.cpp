@@ -388,6 +388,7 @@ void Tasks::MoveTask(void *arg) {
             
             rt_mutex_acquire(&mutex_robot, TM_INFINITE);
             robot.Write(new Message((MessageID)cpMove));
+            
             rt_mutex_release(&mutex_robot);
         }
         //cout << endl << flush;
@@ -422,10 +423,7 @@ void Tasks::BatteryCheck(void *arg) {
             if (msg->GetID() == MESSAGE_ROBOT_BATTERY_LEVEL) {
                 MessageBattery * bat = (MessageBattery *)msg;
                 cout << "Battery : " << bat->GetLevel() << endl << flush;
-                MessageBattery * rep = new MessageBattery();
-                rep->SetID(MESSAGE_ROBOT_BATTERY_LEVEL);
-                rep->SetLevel(bat->GetLevel());
-                monitor.Write(rep);
+                WriteInQueue(&q_messageToMon, bat); // msgSend will be deleted by sendToMon
             }
             rt_mutex_release(&mutex_robot);
         }
