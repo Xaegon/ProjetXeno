@@ -26,6 +26,7 @@
 #define PRIORITY_TRECEIVEFROMMON 25
 #define PRIORITY_TSTARTROBOT 20
 #define PRIORITY_TCAMERA 21
+#define PRIORITY_TBATCHECK 19
 
 /*
  * Some remarks:
@@ -73,6 +74,7 @@ void Tasks::Init() {
         cerr << "Error mutex create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+
     cout << "Mutexes created successfully" << endl << flush;
 
     /**************************************************************************************/
@@ -123,6 +125,10 @@ void Tasks::Init() {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_task_create(&th_battery_check, "th_battery_check", 0, PRIORITY_TBATCHECK, 0)) {
+        cerr << "Error task create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
     cout << "Tasks created successfully" << endl << flush;
 
     /**************************************************************************************/
@@ -164,6 +170,10 @@ void Tasks::Run() {
         exit(EXIT_FAILURE);
     }
     if (err = rt_task_start(&th_move, (void(*)(void*)) & Tasks::MoveTask, this)) {
+        cerr << "Error task start: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_task_start(&th_battery_check, (void(*)(void*)) & Tasks::BatteryCheck, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -275,7 +285,8 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             rt_mutex_acquire(&mutex_move, TM_INFINITE);
             move = msgRcv->GetID();
             rt_mutex_release(&mutex_move);
-        }
+        } 
+
         delete(msgRcv); // mus be deleted manually, no consumer
     }
 }
@@ -364,7 +375,7 @@ void Tasks::MoveTask(void *arg) {
 
     while (1) {
         rt_task_wait_period(NULL);
-        cout << "Periodic movement update";
+        //cout << "Periodic movement update";
         rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
         rs = robotStarted;
         rt_mutex_release(&mutex_robotStarted);
@@ -373,13 +384,52 @@ void Tasks::MoveTask(void *arg) {
             cpMove = move;
             rt_mutex_release(&mutex_move);
             
-            cout << " move: " << cpMove;
+            cout << "Move: " << cpMove << endl << flush;
             
             rt_mutex_acquire(&mutex_robot, TM_INFINITE);
             robot.Write(new Message((MessageID)cpMove));
             rt_mutex_release(&mutex_robot);
         }
-        cout << endl << flush;
+        //cout << endl << flush;
+    }
+}
+
+/**
+ * @brief Thread handling battery level requests.
+ */
+void Tasks::BatteryCheck(void *arg) {
+    int rs;
+    // Answer from robot 
+    Message *msg;
+
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    // Synchronization barrier (waiting that all tasks are starting)
+    rt_sem_p(&sem_barrier, TM_INFINITE);
+
+    // Make the task periodic
+    rt_task_set_periodic(NULL, TM_NOW, 100000000);
+
+    while (1) {
+        rt_task_wait_period(NULL);
+        //cout << "Periodic battery check" << flush;
+        rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
+        rs = robotStarted;
+        rt_mutex_release(&mutex_robotStarted);
+        if (rs == 1) {
+            rt_mutex_acquire(&mutex_robot, TM_INFINITE);
+            // Request the battery level
+            msg = robot.Write(robot.GetBattery());
+            if (msg->GetID() == MESSAGE_ROBOT_BATTERY_LEVEL) {
+                MessageBattery * bat = (MessageBattery *)msg;
+                cout << "Battery : " << bat->GetLevel() << endl << flush;
+                MessageBattery * rep = new MessageBattery();
+                rep->SetID(MESSAGE_ROBOT_BATTERY_LEVEL);
+                rep->SetLevel(bat->GetLevel());
+                monitor.Write(rep);
+            }
+            rt_mutex_release(&mutex_robot);
+        }
+        //cout << endl << flush;
     }
 }
 
