@@ -66,6 +66,10 @@ private:
     ComRobot robot;
     int robotStarted = 0;
     int move = MESSAGE_ROBOT_STOP;
+    Camera * cam = 0;
+    int wd = 0;
+    int temoin = 0;
+    int temoin2 = 0;
     
     /**********************************************************************/
     /* Tasks                                                              */
@@ -77,6 +81,8 @@ private:
     RT_TASK th_startRobot;
     RT_TASK th_move;
     RT_TASK th_battery_check;
+    RT_TASK th_camera;
+    RT_TASK th_watchdog;
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -85,6 +91,7 @@ private:
     RT_MUTEX mutex_robot;
     RT_MUTEX mutex_robotStarted;
     RT_MUTEX mutex_move;
+    RT_MUTEX mutex_wd;
 
     /**********************************************************************/
     /* Semaphores                                                         */
@@ -93,6 +100,8 @@ private:
     RT_SEM sem_openComRobot;
     RT_SEM sem_serverOk;
     RT_SEM sem_startRobot;
+    RT_SEM sem_startWD;
+    RT_SEM sem_startCam;
 
     /**********************************************************************/
     /* Message queues                                                     */
@@ -138,6 +147,15 @@ private:
      */
     void BatteryCheck(void *arg);
 
+    /**
+     * @brief Thread handling camera.
+     */
+    void CameraTask(void *arg);
+
+    /**
+     * @brief Thread handling watchdog.
+     */
+    void WatchdogTask(void *arg);
     /**********************************************************************/
     /* Queue services                                                     */
     /**********************************************************************/
