@@ -68,8 +68,7 @@ private:
     int move = MESSAGE_ROBOT_STOP;
     Camera * cam = 0;
     int wd = 0;
-    int temoin = 0;
-    int temoin2 = 0;
+    int com_cpt = 0;
     
     /**********************************************************************/
     /* Tasks                                                              */
@@ -92,6 +91,7 @@ private:
     RT_MUTEX mutex_robotStarted;
     RT_MUTEX mutex_move;
     RT_MUTEX mutex_wd;
+    RT_MUTEX mutex_com_cpt;
 
     /**********************************************************************/
     /* Semaphores                                                         */
@@ -172,6 +172,11 @@ private:
      * @return Message read
      */
     Message *ReadInQueue(RT_QUEUE *queue);
+
+    /*
+     * Reset the supervisor when com_cpt is at 3 (communication with robot is lost)
+     */
+    void reset_supervisor();
 
 };
 

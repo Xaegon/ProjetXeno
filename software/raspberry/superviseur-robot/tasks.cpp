@@ -79,7 +79,10 @@ void Tasks::Init() {
         cerr << "Error mutex create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-
+    if (err = rt_mutex_create(&mutex_com_cpt, NULL)) {
+        cerr << "Error mutex create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
     cout << "Mutexes created successfully" << endl << flush;
 
     /**************************************************************************************/
@@ -396,9 +399,25 @@ void Tasks::StartRobotTask(void *arg) {
         if (wd == 0) {
             cout << "Start robot without watchdog (";
             msgSend = robot.Write(robot.StartWithoutWD());
+            if (msgSend->GetID() == MESSAGE_ANSWER_ROBOT_TIMEOUT || msgSend->GetID() == MESSAGE_ANSWER_COM_ERROR) {
+                rt_mutex_acquire(&mutex_com_cpt, TM_INFINITE);
+                com_cpt++;
+                if (com_cpt > 3) {
+                    reset_supervisor();
+                }
+                rt_mutex_release(&mutex_com_cpt);
+            }
         } else {
             cout << "Start robot with watchdog (";
             msgSend = robot.Write(robot.StartWithWD());
+            if (msgSend->GetID() == MESSAGE_ANSWER_ROBOT_TIMEOUT || msgSend->GetID() == MESSAGE_ANSWER_COM_ERROR) {
+                rt_mutex_acquire(&mutex_com_cpt, TM_INFINITE);
+                com_cpt++;
+                if (com_cpt > 3) {
+                    reset_supervisor();
+                }
+                rt_mutex_release(&mutex_com_cpt);
+            }
         }
         rt_mutex_release(&mutex_robot);
         cout << msgSend->GetID();
@@ -449,7 +468,15 @@ void Tasks::WatchdogTask(void *arg) {
         
         // If the robot is started, reload watchdog
         if (rs == 1) {
-            robot.Write(robot.ReloadWD());
+            Message *msg = robot.Write(robot.ReloadWD());
+            if (msg->GetID() == MESSAGE_ANSWER_ROBOT_TIMEOUT || msg->GetID() == MESSAGE_ANSWER_COM_ERROR) {
+                rt_mutex_acquire(&mutex_com_cpt, TM_INFINITE);
+                com_cpt++;
+                if (com_cpt > 3) {
+                    reset_supervisor();
+                }
+                rt_mutex_release(&mutex_com_cpt);
+            }
         }
     }
 }
@@ -484,7 +511,16 @@ void Tasks::MoveTask(void *arg) {
             cout << "Move: " << cpMove << endl << flush;
             
             rt_mutex_acquire(&mutex_robot, TM_INFINITE);
-            robot.Write(new Message((MessageID)cpMove));
+            Message *msg = robot.Write(new Message((MessageID)cpMove));
+            if (msg->GetID() == MESSAGE_ANSWER_ROBOT_TIMEOUT || msg->GetID() == MESSAGE_ANSWER_COM_ERROR) {
+                rt_mutex_acquire(&mutex_com_cpt, TM_INFINITE);
+                com_cpt++;
+                if (com_cpt > 3) {
+                    reset_supervisor();
+                }
+                rt_mutex_release(&mutex_com_cpt);
+            }
+            delete(msg);
             rt_mutex_release(&mutex_robot);
         }
         //cout << endl << flush;
@@ -517,6 +553,14 @@ void Tasks::BatteryCheck(void *arg) {
             rt_mutex_acquire(&mutex_robot, TM_INFINITE);
             // Request the battery level
             msg = robot.Write(robot.GetBattery());
+            if (msg->GetID() == MESSAGE_ANSWER_ROBOT_TIMEOUT || msg->GetID() == MESSAGE_ANSWER_COM_ERROR) {
+                rt_mutex_acquire(&mutex_com_cpt, TM_INFINITE);
+                com_cpt++;
+                if (com_cpt > 3) {
+                    reset_supervisor();
+                }
+                rt_mutex_release(&mutex_com_cpt);
+            }
             if (msg->GetID() == MESSAGE_ROBOT_BATTERY_LEVEL) {
                 MessageBattery * bat = (MessageBattery *)msg;
                 cout << "Battery : " << bat->GetLevel() << endl << flush;
@@ -541,9 +585,7 @@ void Tasks::CameraTask(void *arg) {
 
     while(1) {
         rt_task_wait_period(NULL);
-        cout << temoin << endl;
         if (cam != 0) {
-            cout << cam << endl;
             cout << "Send image periodic" << endl << flush;
             Img * img = new Img(cam->Grab());
             MessageImg * msgImg = new MessageImg(MESSAGE_CAM_IMAGE, img);
@@ -584,3 +626,13 @@ Message *Tasks::ReadInQueue(RT_QUEUE *queue) {
     return msg;
 }
 
+/*
+ * Reset the supervisor when com_cpt is at 3 (communication with robot is lost)
+ */
+void Tasks::reset_supervisor() {
+    cout << "Reset supervisor" << endl;
+    Message * msg = new Message(MESSAGE_ANSWER_ROBOT_TIMEOUT);
+    WriteInQueue(&q_messageToMon, msg); 
+    robot.Close();
+    com_cpt = 0;
+}
