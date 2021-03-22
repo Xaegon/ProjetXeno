@@ -630,9 +630,11 @@ Message *Tasks::ReadInQueue(RT_QUEUE *queue) {
  * Reset the supervisor when com_cpt is at 3 (communication with robot is lost)
  */
 void Tasks::reset_supervisor() {
-    cout << "Reset supervisor" << endl;
-    Message * msg = new Message(MESSAGE_ANSWER_ROBOT_TIMEOUT);
-    WriteInQueue(&q_messageToMon, msg); 
-    robot.Close();
-    com_cpt = 0;
+    if (wd) {
+        cout << "Reset supervisor" << endl;
+        Message * msg = new Message(MESSAGE_ANSWER_ROBOT_TIMEOUT);
+        WriteInQueue(&q_messageToMon, msg); 
+        robot.Close();
+        com_cpt = 0;
+    }
 }
